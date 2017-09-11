@@ -513,7 +513,7 @@ __private.receiveForkFive = function (block, lastBlock, cb) {
 		library.logger.info('Last block stands');
 		if (!__private.broadcaster.maxRelays(lastBlock)) {
 			library.logger.info('Broadcast the last block to peers with unmatched broadhash');
-			__private.broadcaster.broadcast({limit: constants.maxPeers, attempt: 1}, {api: '/blocks', data: {block: lastBlock}, method: 'POST', immediate: true});
+			__private.broadcaster.broadcast({limit: constants.maxPeers}, {api: '/blocks', data: {block: lastBlock}, method: 'POST', immediate: true});
 		}
 		return setImmediate(cb); // Discard received block
 	} else {
