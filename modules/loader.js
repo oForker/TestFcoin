@@ -1,6 +1,7 @@
 'use strict';
 
 var async = require('async');
+var maxBy = require('lodash').maxBy;
 var constants = require('../helpers/constants.js');
 var jobsQueue = require('../helpers/jobsQueue.js');
 var ip = require('ip');
@@ -536,7 +537,8 @@ __private.loadBlocksFromNetwork = function (cb) {
 					return !loaded && errorCount < 5;
 				},
 				function (next) {
-					var peer = network.peers[Math.floor(Math.random() * network.peers.length)];
+
+					var peer = maxBy(network.peers, 'height');
 					var lastBlock = modules.blocks.lastBlock.get();
 
 					function loadBlocks () {
