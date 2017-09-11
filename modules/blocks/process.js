@@ -2,6 +2,7 @@
 
 var _ = require('lodash');
 var async = require('async');
+var Broadcaster = require('../../logic/broadcaster.js');
 var constants = require('../../helpers/constants.js');
 var schema = require('../../schema/blocks.js');
 var slots = require('../../helpers/slots.js');
@@ -24,8 +25,10 @@ var modules, library, self, __private = {};
  * @param {Sequence} dbSequence
  * @param {Sequence} sequence
  * @param {Object} genesisblock
+ * @param {Object} broadcasts - config.json/broadcasts
+ * @param {boolean} forgingForce - config.json/forging.force
  */
-function Process (logger, block, peers, transaction, schema, db, dbSequence, sequence, genesisblock) {
+function Process (logger, block, peers, transaction, schema, db, dbSequence, sequence, genesisblock, broadcasts, forgingForce) {
 	library = {
 		logger: logger,
 		schema: schema,
@@ -40,6 +43,8 @@ function Process (logger, block, peers, transaction, schema, db, dbSequence, seq
 		},
 	};
 	self = this;
+
+	__private.broadcaster = new Broadcaster(broadcasts, forgingForce, peers, transaction, logger);
 
 	library.logger.trace('Blocks->Process: Submodule initialized.');
 	return self;
@@ -506,6 +511,10 @@ __private.receiveForkFive = function (block, lastBlock, cb) {
 	// Keep the oldest block, or if both have same age, keep block with lower id
 	if (block.timestamp > lastBlock.timestamp || (block.timestamp === lastBlock.timestamp && block.id > lastBlock.id)) {
 		library.logger.info('Last block stands');
+		if (!__private.broadcaster.maxRelays(lastBlock)) {
+			library.logger.info('Broadcast the last block to peers with unmatched broadhash');
+			__private.broadcaster.broadcast({limit: constants.maxPeers, attempt: 1}, {api: '/blocks', data: {block: lastBlock}, method: 'POST', immediate: true});
+		}
 		return setImmediate(cb); // Discard received block
 	} else {
 		library.logger.info('Last block loses');
