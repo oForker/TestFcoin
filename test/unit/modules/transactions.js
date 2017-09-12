@@ -172,6 +172,8 @@ describe('transactions', function () {
 			var transferTrs = node.lisk.transaction.createTransaction(account.address, 100000000000, node.gAccount.password);
 			postTransaction(transferTrs, eachCb);
 		}, function (err) {
+			console.log('err');
+			console.log(err);
 			expect(err).to.not.exist;
 			node.onNewBlock(done);
 		});

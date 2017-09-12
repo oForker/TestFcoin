@@ -320,7 +320,7 @@ describe('account', function () {
 					body: {
 						address: node.eAccount.address
 					}
-				}, function (err, res){
+				}, function (err, res) {
 					expect(err).to.not.exist;
 					expect(res.delegates).to.be.an('array').which.is.eql([]);
 					done();
