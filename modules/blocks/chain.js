@@ -333,18 +333,15 @@ Chain.prototype.applyBlock = function (block, saveBlock, cb) {
 	// Prevent shutdown during database writes.
 	modules.blocks.isActive.set(true);
 
-	// Transactions to rewind in case of error.
-	var appliedTransactions = {};
-
 	// List of unconfirmed transactions ids.
 	var unconfirmedTransactionIds;
 
 	var steps = [{
 		action: undoUnconfirmedList,
-		reverse: function () {}
+		reverse: function (cb) { cb(); }
 	}, {
 		action: applyUnconfirmed,
-		reverse: undoUnconfirmedList, // Need to define this function
+		reverse: undoUnconfirmed, // Need to define this function
 	}, {
 		action: applyConfirmed,
 		reverse: function undoUnconfirmedList () {} // Need to define this function
@@ -364,20 +361,37 @@ Chain.prototype.applyBlock = function (block, saveBlock, cb) {
 	// Rewind any unconfirmed transactions before applying block.
 	// TODO: It should be possible to remove this call if we can guarantee that only this function is processing transactions atomically. Then speed should be improved further.
 	// TODO: Other possibility, when we rebuild from block chain this action should be moved out of the rebuild function.
-	function undoUnconfirmedList (seriesCb) {
+	function undoUnconfirmedList (cb) {
 		modules.transactions.undoUnconfirmedList(function (undoUnconfirmedErr, ids) {
 			if (undoUnconfirmedErr) {
 				// Fatal error, memory tables will be inconsistent
 				var toReturnErr = ['Failed to undo unconfirmed list', undoUnconfirmedErr];
+				return setImmediate(cb, toReturnErr);
 			} else {
 				unconfirmedTransactionIds = ids;
-				return setImmediate(seriesCb);
+				return setImmediate(cb);
 			}
 		});
 	}
 
+	function undoUnconfirmedTransactions (transactions, cb) {
+		async.eachSeries(transactions, function (transaction, eachSeriesCb) {
+			modules.accounts.getAccount({publicKey: transaction.senderPublicKey}, function (accountErr, sender) {
+				if (accountErr) {
+					return setImmediate(eachSeriesCb, accountErr);
+				}
+				library.logic.transaction.undoUnconfirmed(transaction, sender, eachSeriesCb);
+			});
+		}, function (eachSeriesErr) {
+			return setImmediate(cb, eachSeriesErr);
+		});
+	}
+
 	// Apply transactions to unconfirmed mem_accounts fields.
-	function applyUnconfirmed (seriesCb) {
+	function applyUnconfirmed (cb) {
+		// Transactions to rewind in case of error.
+		var appliedTransactions = [];
+
 		async.eachSeries(block.transactions, function (transaction, eachSeriesCb) {
 			// DATABASE write
 			modules.accounts.setAccountAndGet({publicKey: transaction.senderPublicKey}, function (accountErr, sender) {
@@ -390,7 +404,7 @@ Chain.prototype.applyBlock = function (block, saveBlock, cb) {
 						return setImmediate(eachSeriesCb, applyUnconfirmedErr);
 					}
 
-					appliedTransactions[transaction.id] = transaction;
+					appliedTransactions.push(transaction);
 
 					// Remove the transaction from the node queue, if it was present.
 					var index = unconfirmedTransactionIds.indexOf(transaction.id);
@@ -405,58 +419,78 @@ Chain.prototype.applyBlock = function (block, saveBlock, cb) {
 			if (eachSeriesErr) {
 				// Rewind any already applied unconfirmed transactions.
 				// Leaves the database state as per the previous block.
-				async.eachSeries(block.transactions, function (transaction, eachSeriesCb) {
-					modules.accounts.getAccount({publicKey: transaction.senderPublicKey}, function (accountErr, sender) {
-						if (accountErr) {
-							return setImmediate(eachSeriesCb, accountErr);
-						}
-						// The transaction has been applied?
-						if (appliedTransactions[transaction.id]) {
-							// DATABASE: write
-							library.logic.transaction.undoUnconfirmed(transaction, sender, eachSeriesCb);
-						} else {
-							return setImmediate(eachSeriesCb);
-						}
-					});
-				}, function (eachSeriesErr) {
-					return setImmediate(seriesCb, eachSeriesErr);
+				// Undo all applied transactions
+				// DATABASE: write
+				undoUnconfirmedTransactions(appliedTransactions, function (undoUnconfirmedErr) {
+					if (undoUnconfirmedErr) {
+						var errToReturn = ['Failed to save block, and failed to rollback. Memory tables will be inconsistent, please reload blockchain'];
+						// Maybe exit process here directly?
+						return setImmediate(cb, errToReturn);
+					} else {
+						return setImmediate(cb, 'Revert the shit');
+					}
 				});
 			} else {
-				return setImmediate(seriesCb);
+				return setImmediate(cb);
 			}
 		});
 	}
-	
+
+	function undoConfirmedTransactions (transactions, cb) {
+		async.eachSeries(transactions, function (transaction, eachSeriesCb) {
+			modules.accounts.getAccount({publicKey: transaction.senderPublicKey}, function (accountErr, sender) {
+				if (accountErr) {
+					return setImmediate(eachSeriesCb, accountErr);
+				}
+				library.logic.transaction.undo(transaction, sender, eachSeriesCb);
+			});
+		}, function (eachSeriesErr) {
+			return setImmediate(cb, eachSeriesErr);
+		});
+	}
+
 	// Block and transactions are ok.
 	// Apply transactions to confirmed mem_accounts fields.
-	function applyConfirmed (seriesCb) {
+	function applyConfirmed (cb) {
+		var appliedTransactions = [];
 		async.eachSeries(block.transactions, function (transaction, eachSeriesCb) {
-			modules.accounts.getAccount({publicKey: transaction.senderPublicKey}, function (err, sender) {
-				if (err) {
+			modules.accounts.getAccount({publicKey: transaction.senderPublicKey}, function (accountErr, sender) {
+				if (accountErr) {
 					// Fatal error, memory tables will be inconsistent
-					err = ['Failed to apply transaction:', transaction.id, '-', err].join(' ');
-					library.logger.error(err);
-					library.logger.error('Transaction', transaction);
-
-					return process.exit(0);
+					var toReturnErr = ['Failed to apply transaction', [transaction.id, '-', accountErr].join(' ')];
+					library.logger.error('Failed to get account for transaction', transaction);
+					return setImmediate(eachSeriesCb, toReturnErr);
 				}
 				// DATABASE: write
-				modules.transactions.apply(transaction, block, sender, function (err) {
-					if (err) {
+				modules.transactions.apply(transaction, block, sender, function (applyErr) {
+					if (applyErr) {
 						// Fatal error, memory tables will be inconsistent
-						err = ['Failed to apply transaction:', transaction.id, '-', err].join(' ');
-						library.logger.error(err);
-						library.logger.error('Transaction', transaction);
-
-						return process.exit(0);
+						var toReturnErr = ['Failed to apply transaction', [transaction.id, '-', applyErr].join(' ')];
+						library.logger.error('Failed to apply transaction', transaction);
+						return setImmediate(eachSeriesCb, toReturnErr);
 					}
+					
+					appliedTransactions.push(transaction);
+
 					// Transaction applied, removed from the unconfirmed list.
 					modules.transactions.removeUnconfirmedTransaction(transaction.id);
 					return setImmediate(eachSeriesCb);
 				});
 			});
-		}, function (err) {
-			return setImmediate(seriesCb, err);
+		}, function (eachSeriesErr) {
+			if (eachSeriesErr) {
+				undoConfirmedTransactions(appliedTransactions, function (undoConfirmedErr) {
+					if (undoConfirmedErr) {
+						var errToReturn = ['Failed to save block, and failed to rollback. Memory tables will be inconsistent, please reload blockchain'];
+						// Maybe exit process here directly?
+						return setImmediate(cb, errToReturn);
+					} else {
+						return setImmediate(cb, 'Revert the shit');
+					}
+				});
+			}
+
+			return setImmediate(cb);
 		});
 	}
 
@@ -506,7 +540,7 @@ Chain.prototype.applyBlock = function (block, saveBlock, cb) {
 
 		// Nullify large objects.
 		// Prevents memory leak during synchronisation.
-		appliedTransactions = unconfirmedTransactionIds = block = null;
+		unconfirmedTransactionIds = block = null;
 
 		// Finish here if snapshotting.
 		// FIXME: Not the best place to do that
