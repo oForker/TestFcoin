@@ -144,7 +144,7 @@ __private.syncTimer = function () {
  * Gets a random peer and loads signatures calling the api.
  * Processes each signature from peer.
  * @private
- * @implements {Loader.getNetwork}
+ * @implements {Loader.getNetworkRepresentative}
  * @implements {modules.transport.getFromPeer}
  * @implements {library.schema.validate}
  * @implements {library.sequence.add}
@@ -156,14 +156,7 @@ __private.syncTimer = function () {
 __private.loadSignatures = function (cb) {
 	async.waterfall([
 		function (waterCb) {
-			self.getNetwork(function (err, network) {
-				if (err) {
-					return setImmediate(waterCb, err);
-				} else {
-					var peer = network.peers[Math.floor(Math.random() * network.peers.length)];
-					return setImmediate(waterCb, null, peer);
-				}
-			});
+			self.getNetworkRepresentative(__private.PEER_SELECT_STRATEGIES.RANDOM, waterCb);
 		},
 		function (peer, waterCb) {
 			library.logger.log('Loading signatures from: ' + peer.string);
@@ -205,7 +198,7 @@ __private.loadSignatures = function (cb) {
  * Validates each transaction from peer and remove peer if invalid.
  * Calls processUnconfirmedTransaction for each transaction.
  * @private
- * @implements {Loader.getNetwork}
+ * @implements {Loader.getNetworkRepresentative}
  * @implements {modules.transport.getFromPeer}
  * @implements {library.schema.validate}
  * @implements {async.eachSeries}
@@ -220,17 +213,10 @@ __private.loadSignatures = function (cb) {
 __private.loadTransactions = function (cb) {
 	async.waterfall([
 		function (waterCb) {
-			self.getNetwork(function (err, network) {
-				if (err) {
-					return setImmediate(waterCb, err);
-				} else {
-					var peer = network.peers[Math.floor(Math.random() * network.peers.length)];
-					return setImmediate(waterCb, null, peer);
-				}
-			});
+			self.getNetworkRepresentative(__private.PEER_SELECT_STRATEGIES.RANDOM, waterCb);
 		},
 		function (peer, waterCb) {
-			library.logger.log('Loading transactions from: ' + peer.string);
+			library.logger.log('Loading transactions from: ' + peer.ip + ':' + peer.port);
 
 			modules.transport.getFromPeer(peer, {
 				api: '/transactions',
@@ -516,7 +502,7 @@ __private.loadBlockChain = function () {
 /**
  * Loads blocks from network.
  * @private
- * @implements {Loader.getNetwork}
+ * @implements {Loader.getNetworkRepresentative}
  * @implements {async.whilst}
  * @implements {modules.blocks.lastBlock.get}
  * @implements {modules.blocks.loadBlocksFromPeer}
@@ -528,7 +514,7 @@ __private.loadBlocksFromNetwork = function (cb) {
 	var errorCount = 0;
 	var loaded = false;
 
-	self.getNetwork(function (err, network) {
+	self.getNetworkRepresentative(__private.PEER_SELECT_STRATEGIES.HIGHEST, function (err, peer) {
 		if (err) {
 			return setImmediate(cb, err);
 		} else {
@@ -538,7 +524,6 @@ __private.loadBlocksFromNetwork = function (cb) {
 				},
 				function (next) {
 
-					var peer = maxBy(network.peers, 'height');
 					var lastBlock = modules.blocks.lastBlock.get();
 
 					function loadBlocks () {
@@ -551,7 +536,7 @@ __private.loadBlocksFromNetwork = function (cb) {
 								errorCount += 1;
 							}
 							loaded = lastValidBlock.id === lastBlock.id;
-							lastValidBlock = lastBlock = null;
+							lastBlock = null;
 							next();
 						});
 					}
@@ -714,6 +699,14 @@ __private.findGoodPeers = function (heights) {
 	}
 };
 
+__private.PEER_SELECT_STRATEGIES = {
+	RANDOM: function (peers) {
+		return peers[Math.floor(Math.random() * peers.length)];
+	},
+	HIGHEST: function (peers) {
+		return maxBy(peers, 'height');
+	}
+};
 // Public methods
 
 // Rationale:
@@ -725,27 +718,29 @@ __private.findGoodPeers = function (heights) {
  * @implements {modules.blocks.lastBlock.get}
  * @implements {modules.peers.list}
  * @implements {__private.findGoodPeers}
+ * @param {function} peerSelectStrategy - chooses random / highest peer
  * @param {function} cb
  * @return {setImmediateCallback} err | __private.network (good peers)
  */
-Loader.prototype.getNetwork = function (cb) {
-	if (__private.network.height > 0 && Math.abs(__private.network.height - modules.blocks.lastBlock.get().height) === 1) {
-		return setImmediate(cb, null, __private.network);
-	}
-
-	modules.peers.list({}, function (err, peers) {
-		if (err) {
-			return setImmediate(cb, err);
+Loader.prototype.getNetworkRepresentative = function (peerSelectStrategy, cb) {
+	async.series({
+		getNetwork: function (seriesCb) {
+			if (__private.network.height > 0 && Math.abs(__private.network.height - modules.blocks.lastBlock.get().height) === 1) {
+				return setImmediate(seriesCb);
+			}
+			modules.peers.list({}, function (err, peers) {
+				if (err) {
+					return setImmediate(seriesCb, err);
+				}
+				__private.network = __private.findGoodPeers(peers);
+				return setImmediate(seriesCb, !__private.network.peers.length ? 'Failed to find enough good peers' : null);
+			});
+		},
+		selectRepresentative: function (seriesCb) {
+			var selectedPeer = peerSelectStrategy(__private.network.peers);
+			return setImmediate(seriesCb, null, selectedPeer);
 		}
-
-		__private.network = __private.findGoodPeers(peers);
-
-		if (!__private.network.peers.length) {
-			return setImmediate(cb, 'Failed to find enough good peers');
-		} else {
-			return setImmediate(cb, null, __private.network);
-		}
-	});
+	}, cb);
 };
 
 /**
