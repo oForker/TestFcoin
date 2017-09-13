@@ -341,7 +341,7 @@ Chain.prototype.applyBlock = function (block, saveBlock, cb) {
 		reverse: function (cb) { cb(); }
 	}, {
 		action: applyUnconfirmed,
-		reverse: undoUnconfirmed, // Need to define this function
+		reverse: function undoUnconfirmed () {} , // Need to define this function
 	}, {
 		action: applyConfirmed,
 		reverse: function undoUnconfirmedList () {} // Need to define this function
