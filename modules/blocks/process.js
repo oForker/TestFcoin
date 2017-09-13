@@ -364,7 +364,7 @@ Process.prototype.generateBlock = function (keypair, timestamp, cb) {
  * @public
  * @method  onReceiveBlock
  * @listens module:transport~event:receiveBlock
- * @param   {block} block New block
+ * @param   {block} block - new block
  */
 Process.prototype.onReceiveBlock = function (block) {
 	var lastBlock;
@@ -493,9 +493,10 @@ __private.receiveForkOne = function (block, lastBlock, cb) {
  *
  * @private
  * @async
- * @method receiveBlock
- * @param {Object}   block Received block
- * @param {Function} cb Callback function
+ * @method receiveForkFive
+ * @param {Object}   block - received block
+ * @param {Object}   lastBlock - last valid block
+ * @param {Function} cb - callback function
  */
 __private.receiveForkFive = function (block, lastBlock, cb) {
 	var tmp_block = _.clone(block);
@@ -513,7 +514,7 @@ __private.receiveForkFive = function (block, lastBlock, cb) {
 		library.logger.info('Last block stands');
 		if (!__private.broadcaster.maxRelays(lastBlock)) {
 			library.logger.info('Broadcast the last block to peers with unmatched broadhash');
-			__private.broadcaster.broadcast({limit: constants.maxPeers}, {api: '/blocks', data: {block: lastBlock}, method: 'POST', immediate: true});
+			__private.broadcaster.broadcast({broadhash: modules.system.getBroadhash(), unmatchBroadhash: true}, {api: '/blocks', data: {block: lastBlock}, method: 'POST', immediate: true});
 		}
 		return setImmediate(cb); // Discard received block
 	} else {
@@ -577,6 +578,7 @@ Process.prototype.onBind = function (scope) {
 		rounds: scope.rounds,
 		transactions: scope.transactions,
 		transport: scope.transport,
+		system: scope.system
 	};
 
 	// Set module as loaded
