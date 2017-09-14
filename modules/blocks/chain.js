@@ -341,7 +341,7 @@ Chain.prototype.applyBlock = function (block, saveBlock, cb) {
 		reverse: function (cb) { cb(); }
 	}, {
 		action: applyUnconfirmed,
-		reverse: function undoUnconfirmed () {} , // Need to define this function
+		reverse: undoUnconfirmed,
 	}, {
 		action: applyConfirmed,
 		reverse: function undoUnconfirmedList () {} // Need to define this function
@@ -349,8 +349,7 @@ Chain.prototype.applyBlock = function (block, saveBlock, cb) {
 		action: saveBlock,
 		reverse: function deleteBlock () {} // Need to define this function
 	}, {
-		action: applyUnconfirmedIds,
-		reverse: function undoUnconfirmedIds () {} // Need to see if this function is correct.
+		action: applyUnconfirmedIds // if this action completes, we should never have to call reverse, because it's the last step.
 	}];
 
 	// On stage success, we pop an element from this array.
@@ -363,17 +362,22 @@ Chain.prototype.applyBlock = function (block, saveBlock, cb) {
 	// TODO: Other possibility, when we rebuild from block chain this action should be moved out of the rebuild function.
 	function undoUnconfirmedList (cb) {
 		modules.transactions.undoUnconfirmedList(function (undoUnconfirmedErr, ids) {
+			// UndoUnconfirmedErr will always be null right now, because we are never returning any error from there
 			if (undoUnconfirmedErr) {
 				// Fatal error, memory tables will be inconsistent
-				var toReturnErr = ['Failed to undo unconfirmed list', undoUnconfirmedErr];
-				return setImmediate(cb, toReturnErr);
+				library.logger.error('Failed to save block, unconfirmed accounts balance will be inconsistent, please rebuild blockchain');
+				library.logger.error(undoUnconfirmedErr);
+				process.exit(1);
 			} else {
 				unconfirmedTransactionIds = ids;
+				// Remove current action from todo's list, and add it to undo list incase of an error
+				toUndoIncaseFailure(mutableTodoSteps.shift());
 				return setImmediate(cb);
 			}
 		});
 	}
 
+	// internal function used by applyUnconfirmed and undoUnconfirmed
 	function undoUnconfirmedTransactions (transactions, cb) {
 		async.eachSeries(transactions, function (transaction, eachSeriesCb) {
 			modules.accounts.getAccount({publicKey: transaction.senderPublicKey}, function (accountErr, sender) {
@@ -387,6 +391,11 @@ Chain.prototype.applyBlock = function (block, saveBlock, cb) {
 		});
 	}
 
+	// Undo action for applyUnconfirmed
+	function undoUnconfirmed (cb) {
+		undoUnconfirmedTransactions(block.transactions, cb);
+	}
+
 	// Apply transactions to unconfirmed mem_accounts fields.
 	function applyUnconfirmed (cb) {
 		// Transactions to rewind in case of error.
@@ -398,9 +407,7 @@ Chain.prototype.applyBlock = function (block, saveBlock, cb) {
 				// DATABASE: write
 				modules.transactions.applyUnconfirmed(transaction, sender, function (applyUnconfirmedErr) {
 					if (applyUnconfirmedErr) {
-						applyUnconfirmedErr = ['Failed to apply transaction:', transaction.id, '-', applyUnconfirmedErr].join(' ');
-						library.logger.error(applyUnconfirmedErr);
-						library.logger.error('Transaction', transaction);
+						library.logger.error('Failed to apply unconfirmed transaction', transaction);
 						return setImmediate(eachSeriesCb, applyUnconfirmedErr);
 					}
 
@@ -417,25 +424,35 @@ Chain.prototype.applyBlock = function (block, saveBlock, cb) {
 			});
 		}, function (eachSeriesErr) {
 			if (eachSeriesErr) {
+				library.logger.error('Unable to apply unconfirmed transactions');
+				library.logger.error(eachSeriesErr);
 				// Rewind any already applied unconfirmed transactions.
 				// Leaves the database state as per the previous block.
 				// Undo all applied transactions
 				// DATABASE: write
 				undoUnconfirmedTransactions(appliedTransactions, function (undoUnconfirmedErr) {
 					if (undoUnconfirmedErr) {
-						var errToReturn = ['Failed to save block, and failed to rollback. Memory tables will be inconsistent, please reload blockchain'];
-						// Maybe exit process here directly?
-						return setImmediate(cb, errToReturn);
+
+						library.logger.error('Unable to revert unconfirmed transaction changes, mem_accounts will be inconsistent, please rebuild blockchain');
+						library.logger.error(undoUnconfirmedErr);
+						process.exit(1);
 					} else {
-						return setImmediate(cb, 'Revert the shit');
+						var toReturnErr = {
+							revertChanges: true,
+							error: ['Failed to apply unconfirmed transactions:'].concat(eachSeriesErr)
+						};
+						return setImmediate(cb, toReturnErr);
 					}
 				});
 			} else {
+				// Remove current action from todo's list, and add it to undo list incase of an error
+				toUndoIncaseFailure(mutableTodoSteps.shift());
 				return setImmediate(cb);
 			}
 		});
 	}
 
+	// Internal function used by applyConfirmed and it's reverse; undoConfirmed
 	function undoConfirmedTransactions (transactions, cb) {
 		async.eachSeries(transactions, function (transaction, eachSeriesCb) {
 			modules.accounts.getAccount({publicKey: transaction.senderPublicKey}, function (accountErr, sender) {
@@ -449,6 +466,11 @@ Chain.prototype.applyBlock = function (block, saveBlock, cb) {
 		});
 	}
 
+	// Reverse action of applyConfirmed
+	function undoConfirmed (cb) {
+		undoConfirmedTransactions(block.transactions, cb);
+	}
+
 	// Block and transactions are ok.
 	// Apply transactions to confirmed mem_accounts fields.
 	function applyConfirmed (cb) {
@@ -456,18 +478,15 @@ Chain.prototype.applyBlock = function (block, saveBlock, cb) {
 		async.eachSeries(block.transactions, function (transaction, eachSeriesCb) {
 			modules.accounts.getAccount({publicKey: transaction.senderPublicKey}, function (accountErr, sender) {
 				if (accountErr) {
-					// Fatal error, memory tables will be inconsistent
-					var toReturnErr = ['Failed to apply transaction', [transaction.id, '-', accountErr].join(' ')];
 					library.logger.error('Failed to get account for transaction', transaction);
-					return setImmediate(eachSeriesCb, toReturnErr);
+					return setImmediate(eachSeriesCb, accountErr);
 				}
 				// DATABASE: write
 				modules.transactions.apply(transaction, block, sender, function (applyErr) {
 					if (applyErr) {
-						// Fatal error, memory tables will be inconsistent
-						var toReturnErr = ['Failed to apply transaction', [transaction.id, '-', applyErr].join(' ')];
+						// Now we will try to undo all the applied transaction 
 						library.logger.error('Failed to apply transaction', transaction);
-						return setImmediate(eachSeriesCb, toReturnErr);
+						return setImmediate(eachSeriesCb, applyErr);
 					}
 					
 					appliedTransactions.push(transaction);
@@ -479,42 +498,55 @@ Chain.prototype.applyBlock = function (block, saveBlock, cb) {
 			});
 		}, function (eachSeriesErr) {
 			if (eachSeriesErr) {
+				library.logger.error('Failed to apply confirmed transactions', eachSeriesErr);
 				undoConfirmedTransactions(appliedTransactions, function (undoConfirmedErr) {
 					if (undoConfirmedErr) {
-						var errToReturn = ['Failed to save block, and failed to rollback. Memory tables will be inconsistent, please reload blockchain'];
-						// Maybe exit process here directly?
-						return setImmediate(cb, errToReturn);
+						library.logger.error('Failed to apply transactions, and failed to recover. Memory tables will be inconsistent, please reload blockchain');
+						library.logger.error(undoConfirmedErr);
+						// Exiting because we can't recover from this stage.
+						return process.exit(1);
 					} else {
-						return setImmediate(cb, 'Revert the shit');
+						var toReturnErr = {
+							revertChanges: true,
+							error: ['Failed to apply transactions:'].concat(eachSeriesErr)
+						};
+						return setImmediate(cb, toReturnErr);
 					}
 				});
 			}
 
+			toUndoIncaseFailure(mutableTodoSteps.shift());
 			return setImmediate(cb);
 		});
 	}
 
 	// Optionally save the block to the database.
-	function saveBlock (seriesCb) {
+	function saveBlock (cb) {
 		modules.blocks.lastBlock.set(block);
 
 		if (saveBlock) {
 			// DATABASE: write
-			self.saveBlock(block, function (err) {
-				if (err) {
-					// Fatal error, memory tables will be inconsistent
+			self.saveBlock(block, function (saveBlockErr) {
+				if (saveBlockErr) {
 					library.logger.error('Failed to save block...');
 					library.logger.error('Block', block);
+					library.logger.error(saveBlockErr);
 
-					return process.exit(0);
+					var toReturnErr = {
+						revertChanges: true,
+						error: ['Failed to save block:'].concat(saveBlockErr)
+					};
+					return setImmediate(cb, toReturnErr);
 				}
 
 				library.logger.debug('Block applied correctly with ' + block.transactions.length + ' transactions');
 
-				return seriesCb();
+				toUndoIncaseFailure(mutableTodoSteps.shift());
+
+				return setImmediate(cb);
 			});
 		} else {
-			return seriesCb();
+			return setImmediate(cb);
 		}
 	}
 
@@ -527,12 +559,9 @@ Chain.prototype.applyBlock = function (block, saveBlock, cb) {
 		});
 	}
 
-	async.series({
-		undoUnconfirmedList, 
-		applyUnconfirmed,
-		applyConfirmed,
-		saveBlock,
-		applyUnconfirmedIds
+	async.mapSeries(steps, function (step, cb) {
+		// Run each step's action parameter.
+		step.action(cb);
 	}, function (err) {
 
 		// Allow shutdown, database writes are finished.
@@ -549,9 +578,21 @@ Chain.prototype.applyBlock = function (block, saveBlock, cb) {
 			process.emit('SIGTERM');
 		}
 
-		if (err instanceof Array && err.length === 2) {
+		if (err instanceof Object && err.revertChanges === true) {
 			library.logger.error.apply(null, err);
-			return process.exit(0);
+			// Undo all the steps we had done
+			async.mapSeries(toUndoIncaseFailure, function (step, cb) {
+				step.reverse(cb);
+			}, function (mapSeriesErr) {
+				if (err) {
+					library.logger.error('Failed to apply transactions, and failed to recover. Memory tables will be inconsistent, please reload blockchain before starting application');
+					library.logger.error(mapSeriesErr);
+					return process.exit(1);
+				}
+
+				library.logger.info('Recovered mem_account changes, exiting application now..');
+				return process.exit(0);
+			});
 		}
 
 		return setImmediate(cb, err);
