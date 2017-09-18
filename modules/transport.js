@@ -523,6 +523,23 @@ Transport.prototype.onMessage = function (msg, broadcast) {
 };
 
 /**
+ * Broadcasts the block using __private.broadcaster.broadcast
+ * @implements {Broadcaster.broadcast}
+ * @param {Object} params
+ * @param {Object} block
+ */
+Transport.prototype.broadcastBlock = function (params, block) {
+	if (!__private.broadcaster.maxRelays(block)) {
+		__private.broadcaster.broadcast(params, {
+			api: '/blocks',
+			data: {block: block},
+			method: 'POST',
+			immediate: true
+		});
+	}
+};
+
+/**
  * Sets loaded to false.
  * @param {function} cb
  * @return {setImmediateCallback} cb

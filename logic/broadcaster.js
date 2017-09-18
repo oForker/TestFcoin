@@ -144,7 +144,7 @@ Broadcaster.prototype.enqueue = function (params, options) {
  * @implements {library.logic.peers.create}
  * @param {Object} params
  * @param {Object} options
- * @param {function} cb
+ * @param {function}[cb=undefined] cb
  * @return {setImmediateCallback} err | peers
  */
 Broadcaster.prototype.broadcast = function (params, options, cb) {

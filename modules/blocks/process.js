@@ -25,10 +25,8 @@ var modules, library, self, __private = {};
  * @param {Sequence} dbSequence
  * @param {Sequence} sequence
  * @param {Object} genesisblock
- * @param {Object} broadcasts - config.json/broadcasts
- * @param {boolean} forgingForce - config.json/forging.force
  */
-function Process (logger, block, peers, transaction, schema, db, dbSequence, sequence, genesisblock, broadcasts, forgingForce) {
+function Process (logger, block, peers, transaction, schema, db, dbSequence, sequence, genesisblock) {
 	library = {
 		logger: logger,
 		schema: schema,
@@ -39,12 +37,10 @@ function Process (logger, block, peers, transaction, schema, db, dbSequence, seq
 		logic: {
 			block: block,
 			peers: peers,
-			transaction: transaction,
-		},
+			transaction: transaction
+		}
 	};
 	self = this;
-
-	__private.broadcaster = new Broadcaster(broadcasts, forgingForce, peers, transaction, logger);
 
 	library.logger.trace('Blocks->Process: Submodule initialized.');
 	return self;
@@ -514,7 +510,7 @@ __private.receiveForkFive = function (block, lastBlock, cb) {
 		library.logger.info('Last block stands');
 		if (!__private.broadcaster.maxRelays(lastBlock)) {
 			library.logger.info('Broadcast the last block to peers with unmatched broadhash');
-			__private.broadcaster.broadcast({broadhash: modules.system.getBroadhash(), unmatchBroadhash: true}, {api: '/blocks', data: {block: lastBlock}, method: 'POST', immediate: true});
+			modules.transport.broadcastBlock({broadhash: modules.system.getBroadhash(), unmatchBroadhash: true}, lastBlock);
 		}
 		return setImmediate(cb); // Discard received block
 	} else {

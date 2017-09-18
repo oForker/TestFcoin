@@ -10,7 +10,7 @@ var blocksUtils   = require('./blocks/utils');
 var blocksChain   = require('./blocks/chain');
 
 // Private fields
-var modules, library, self, __private = {};
+var library, self, __private = {};
 
 __private.lastBlock = {};
 __private.lastReceipt = null;
@@ -45,8 +45,7 @@ function Blocks (cb, scope) {
 		),
 		process: new blocksProcess(
 			scope.logger, scope.logic.block, scope.logic.peers, scope.logic.transaction,
-			scope.schema, scope.db, scope.dbSequence, scope.sequence, scope.genesisblock,
-			scope.config.broadcasts, scope.config.forging.force
+			scope.schema, scope.db, scope.dbSequence, scope.sequence, scope.genesisblock
 		),
 		utils:   new blocksUtils(scope.logger, scope.logic.block, scope.logic.transaction, 
 			scope.db, scope.dbSequence, scope.genesisblock
