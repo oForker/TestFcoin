@@ -77,8 +77,18 @@ module.exports = function (grunt) {
 				maxBuffer: maxBufferSize
 			},
 
-			testFunctional: {
-				command: './node_modules/.bin/_mocha test/functional/index.js',
+			testFunctionalWs: {
+				command: './node_modules/.bin/_mocha test/functional/ws/index.js',
+				maxBuffer: maxBufferSize
+			},
+
+			testFunctionalHttp: {
+				command: './node_modules/.bin/_mocha test/functional/http/index.js',
+				maxBuffer: maxBufferSize
+			},
+
+			testIntegration: {
+				command: './node_modules/.bin/_mocha --bail test/integration/peers.integration.js ',
 				maxBuffer: maxBufferSize
 			},
 
@@ -142,7 +152,9 @@ module.exports = function (grunt) {
 	grunt.registerTask('eslint-nofix', ['eslint']);
 	grunt.registerTask('test', ['eslint', 'exec:coverage']);
 	grunt.registerTask('test-unit', ['eslint', 'exec:coverageUnit']);
-	grunt.registerTask('test-functional', ['eslint', 'exec:testFunctional']);
+	grunt.registerTask('test-functional-ws', ['eslint', 'exec:testFunctionalWs']);
+	grunt.registerTask('test-functional-http', ['eslint', 'exec:testFunctionalHttp']);
+	grunt.registerTask('test-integration', ['eslint', 'exec:testIntegration']);
 
 	grunt.registerTask('eslint-fix', 'Run eslint and fix formatting', function () {
 		grunt.config.set('eslint.options.fix', true);

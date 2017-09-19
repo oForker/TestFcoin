@@ -17,6 +17,7 @@ def buildDependency() {
 		'''
 	} catch (err) {
 		currentBuild.result = 'FAILURE'
+		report()
 		error('Stopping build, installation failed')
 	}
 }
@@ -30,8 +31,25 @@ def startLisk() {
 		'''
 	} catch (err) {
 		currentBuild.result = 'FAILURE'
+		report()
 		error('Stopping build, Lisk failed')
 	}
+}
+
+def report(){
+	step([
+		$class: 'GitHubCommitStatusSetter',
+		errorHandlers: [[$class: 'ShallowAnyErrorHandler']],
+		contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'jenkins-ci/func-unit'],
+		statusResultSource: [
+			$class: 'ConditionalStatusResultSource',
+			results: [
+					[$class: 'BetterThanOrEqualBuildResult', result: 'SUCCESS', state: 'SUCCESS', message: 'This commit looks good :)'],
+					[$class: 'BetterThanOrEqualBuildResult', result: 'FAILURE', state: 'FAILURE', message: 'This commit failed testing :('],
+					[$class: 'AnyBuildResult', state: 'FAILURE', message: 'This build some how escaped evaluation']
+			]
+		]
+	])
 }
 
 lock(resource: "Lisk-Core-Nodes", inversePrecedence: true) {
@@ -152,19 +170,19 @@ lock(resource: "Lisk-Core-Nodes", inversePrecedence: true) {
 					'''
 				}
 			},
-			"Functional Delegates" : {
+			"Functional Dapps" : {
 				node('node-01'){
 					sh '''
-					export TEST=test/functional/http/get/delegates.js TEST_TYPE='FUNC' NODE_ENV='TEST'
+					export TEST=test/functional/http/get/dapps.js TEST_TYPE='FUNC' NODE_ENV='TEST'
 					cd "$(echo $WORKSPACE | cut -f 1 -d '@')"
 					npm run jenkins
 					'''
 				}
 			},
-			"Functional Dapps" : {
+			"Functional Delegates" : {
 				node('node-01'){
 					sh '''
-					export TEST=test/functional/http/get/dapps.js TEST_TYPE='FUNC' NODE_ENV='TEST'
+					export TEST=test/functional/http/get/delegates.js TEST_TYPE='FUNC' NODE_ENV='TEST'
 					cd "$(echo $WORKSPACE | cut -f 1 -d '@')"
 					npm run jenkins
 					'''
@@ -195,8 +213,17 @@ lock(resource: "Lisk-Core-Nodes", inversePrecedence: true) {
 					cd "$(echo $WORKSPACE | cut -f 1 -d '@')"
 					npm run jenkins
 					'''
-			 }
-			}, //End node-01 tests
+				}
+			},
+			"Functional Peers" : {
+				node('node-02'){
+					sh '''
+					export TEST=test/functional/get/peers.js TEST_TYPE='FUNC' NODE_ENV='TEST'
+					cd "$(echo $WORKSPACE | cut -f 1 -d '@')"
+					npm run jenkins
+					'''
+				}
+			},  // End node-01 functional tests
 			"Functional Transport - Main" : {
 				node('node-02'){
 					sh '''
@@ -210,6 +237,24 @@ lock(resource: "Lisk-Core-Nodes", inversePrecedence: true) {
 				node('node-02'){
 					sh '''
 					export TEST=test/functional/ws/transport.blocks.js TEST_TYPE='FUNC' NODE_ENV='TEST'
+					cd "$(echo $WORKSPACE | cut -f 1 -d '@')"
+					npm run jenkins
+					'''
+				}
+			},
+			"Functional Transport - Client" : {
+				node('node-02'){
+					sh '''
+					export TEST=test/functional/ws/transport.client.js TEST_TYPE='FUNC' NODE_ENV='TEST'
+					cd "$(echo $WORKSPACE | cut -f 1 -d '@')"
+					npm run jenkins
+					'''
+				}
+			},
+			"Functional Transport - Handshake" : {
+				node('node-02'){
+					sh '''
+					export TEST=test/functional/ws/transport.handshake.js TEST_TYPE='FUNC' NODE_ENV='TEST'
 					cd "$(echo $WORKSPACE | cut -f 1 -d '@')"
 					npm run jenkins
 					'''
@@ -277,70 +322,16 @@ lock(resource: "Lisk-Core-Nodes", inversePrecedence: true) {
 					npm run jenkins
 					'''
 				}
-			},
-			"Functional Transport - Peers" : {
-				node('node-02'){
-					sh '''
-					export TEST=test/functional/http/get/peers.js TEST_TYPE='FUNC' NODE_ENV='TEST'
-					cd "$(echo $WORKSPACE | cut -f 1 -d '@')"
-					npm run jenkins
-					'''
-				}
 			}, // End Node-02 Tests
-			"Unit - Modules" : {
+			"Unit Tests" : {
 				node('node-03'){
 					sh '''
-					export TEST=test/unit/modules/blocks.js TEST_TYPE='UNIT' NODE_ENV='TEST'
+					export TEST_TYPE='UNIT' NODE_ENV='TEST'
 					cd "$(echo $WORKSPACE | cut -f 1 -d '@')"
-					npm run jenkins
-
-					export TEST=test/unit/modules/cache.js TEST_TYPE='UNIT' NODE_ENV='TEST'
-					npm run jenkins
-
-					export TEST=test/unit/modules/peers.js TEST_TYPE='UNIT' NODE_ENV='TEST'
-					npm run jenkins
-
-					export TEST=test/unit/modules/transactions.js TEST_TYPE='UNIT' NODE_ENV='TEST'
-					npm run jenkins
-
-					export TEST=test/unit/modules/blocks/verify.js TEST_TYPE='UNIT' NODE_ENV='TEST'
-					npm run jenkins
+					npm run test-unit
 					'''
 				}
-			},
-			"Unit - SQL" : {
-				node('node-03'){
-					sh '''
-					export TEST=test/unit/sql/blockRewards.js TEST_TYPE='UNIT' NODE_ENV='TEST'
-					cd "$(echo $WORKSPACE | cut -f 1 -d '@')"
-					npm run jenkins
-
-					export TEST=test/unit/sql/delegatesList.js TEST_TYPE='UNIT' NODE_ENV='TEST'
-					npm run jenkins
-
-					export TEST=test/unit/sql/rounds.js TEST_TYPE='UNIT' NODE_ENV='TEST'
-					npm run jenkins
-					'''
-				}
-			},
-			"Unit - Helpers" : {
-				node('node-03'){
-					sh '''
-					export TEST=test/unit/helpers TEST_TYPE='UNIT' NODE_ENV='TEST'
-					cd "$(echo $WORKSPACE | cut -f 1 -d '@')"
-					npm run jenkins
-					'''
-				}
-			},
-			"Unit - Logic" : {
-				node('node-03'){
-					sh '''
-					export TEST=test/unit/logic TEST_TYPE='UNIT' NODE_ENV='TEST'
-					cd "$(echo $WORKSPACE | cut -f 1 -d '@')"
-					npm run jenkins
-					'''
-				}
-			}, // Begin node-04
+			}, // End Node-03 unit tests
 			"Functional Stress - Transactions" : {
 				node('node-04'){
 					sh '''
@@ -349,7 +340,7 @@ lock(resource: "Lisk-Core-Nodes", inversePrecedence: true) {
 					npm run jenkins
 					'''
 				}
-			}
+			} // End Node-04
 		) // End Parallel
 	}
 
@@ -466,7 +457,10 @@ lock(resource: "Lisk-Core-Nodes", inversePrecedence: true) {
 	}
 
 	stage ('Set milestone') {
-		milestone 1
-		currentBuild.result = 'SUCCESS'
+		node('master-01'){
+			milestone 1
+			currentBuild.result = 'SUCCESS'
+			report()
+		}
 	}
 }
