@@ -12,6 +12,12 @@ describe('POST /api/transactions (type 0) transfer funds', function () {
 	var badTransactions = [];
 	var goodTransactions = [];
 
+	var account = node.randomAccount();
+	var goodTransaction = node.randomTx();
+	// Low-frills deep copy
+	var cloneGoodTransaction = JSON.parse(JSON.stringify(goodTransaction));
+	var transaction;
+
 	describe('schema validations', function () {
 
 		shared.invalidTxs();
@@ -19,11 +25,18 @@ describe('POST /api/transactions (type 0) transfer funds', function () {
 
 	describe('transaction processing', function () {
 
-		var account = node.randomAccount();
-		var goodTransaction = node.randomTx();
+		it('mutating data used to build the tx id should fail', function () {
+			transaction = node.randomTx();
+			transaction.timestamp += 1;
+
+			return sendTransactionPromise(transaction).then(function (res) {
+				node.expect(res).to.have.property('success').to.be.not.ok;
+				node.expect(res).to.have.property('message').to.equal('Invalid transaction id');
+			});
+		});
 
 		it('using zero amount should fail', function () {
-			var transaction = node.lisk.transaction.createTransaction(account.address, 0, node.gAccount.password);
+			transaction = node.lisk.transaction.createTransaction(account.address, 0, node.gAccount.password);
 
 			return sendTransactionPromise(transaction).then(function (res) {
 				node.expect(res).to.have.property('success').to.be.not.ok;
@@ -33,7 +46,7 @@ describe('POST /api/transactions (type 0) transfer funds', function () {
 		});
 
 		it('when sender has no funds should fail', function () {
-			var transaction = node.lisk.transaction.createTransaction('1L', 1, account.password);
+			transaction = node.lisk.transaction.createTransaction('1L', 1, account.password);
 
 			return sendTransactionPromise(transaction).then(function (res) {
 				node.expect(res).to.have.property('success').to.be.not.ok;
@@ -43,7 +56,7 @@ describe('POST /api/transactions (type 0) transfer funds', function () {
 		});
 
 		it('using entire balance should fail', function () {
-			var transaction = node.lisk.transaction.createTransaction(account.address, Math.floor(node.gAccount.balance), node.gAccount.password);
+			transaction = node.lisk.transaction.createTransaction(account.address, Math.floor(node.gAccount.balance) , node.gAccount.password);
 
 			return sendTransactionPromise(transaction).then(function (res) {
 				node.expect(res).to.have.property('success').to.be.not.ok;
@@ -87,10 +100,29 @@ describe('POST /api/transactions (type 0) transfer funds', function () {
 				node.expect(res).to.have.property('message').to.equal('Transaction is already processed: ' + goodTransaction.id);
 			});
 		});
+
+		it('sending transaction with same id twice but different timestamp should fail', function () {
+			cloneGoodTransaction.timestamp += 1;
+
+			return sendTransactionPromise(cloneGoodTransaction).then(function (res) {
+				node.expect(res).to.have.property('success').to.be.not.ok;
+				node.expect(res).to.have.property('message').to.equal('Transaction is already processed: ' + cloneGoodTransaction.id);
+			});
+		});
 	});
 
 	describe('transaction confirmations', function () {
 
 		shared.confirmationPhase(goodTransactions, badTransactions);
+	});
+
+	describe('enforcement', function () {
+
+		it('sending already confirmed transaction should fail', function () {
+			return sendTransactionPromise(goodTransaction).then(function (res) {
+				node.expect(res).to.have.property('success').to.be.not.ok;
+				node.expect(res).to.have.property('message').to.equal('Transaction is already confirmed: ' + goodTransaction.id);
+			});
+		});
 	});
 });
