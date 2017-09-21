@@ -10,7 +10,7 @@ var sendSignature = require('../../../common/complexTransactions').sendSignature
 
 var sendTransactionPromise = node.Promise.promisify(sendTransaction);
 var creditAccountPromise = node.Promise.promisify(creditAccount);
-var sendSignaturePromisify = node.Promise.promisify(sendSignature);
+var sendSignaturePromise = node.Promise.promisify(sendSignature);
 var onNewBlockPromise = node.Promise.promisify(node.onNewBlock);
 
 describe('POST /api/transactions (type 1) register second secret', function () {
@@ -26,6 +26,7 @@ describe('POST /api/transactions (type 1) register second secret', function () {
 	accountEmptySecondPassword.secondPassword = '';
 	var accountNoFunds = node.randomAccount();
 	var accountScarceFunds = node.randomAccount();
+	var accountNoSecondPassword = node.randomAccount();
 
 	var transaction, signature;
 
@@ -36,6 +37,7 @@ describe('POST /api/transactions (type 1) register second secret', function () {
 		promises.push(creditAccountPromise(account.address, 100000000000));
 		promises.push(creditAccountPromise(accountEmptySecondPassword.address, 100000000000));
 		promises.push(creditAccountPromise(accountScarceFunds.address, constants.fees.secondsignature));
+		promises.push(creditAccountPromise(accountNoSecondPassword.address, constants.fees.secondsignature));
 
 		return node.Promise.all(promises).then(function (results) {
 			results.forEach(function (res) {
@@ -84,8 +86,21 @@ describe('POST /api/transactions (type 1) register second secret', function () {
 			});
 		});
 
+		// FIXME: [ERR] 2017-09-20 15:15:23 | Failed to apply unconfirmed transaction: 1891543172423023620 - Second signature already enabled
+		//				[ERR] 2017-09-20 15:15:23 | TypeError: Cannot read property 'publicKey' of undefined
+		//				at Transaction.Signature.getBytes (/Users/diego-g/git/lisk/logic/signature.js:102:56)
+		it('with valid params should be ok but not confirmed if sendind twice in a row', function () {
+			transaction = node.lisk.signature.createSignature(account.password, 'secondpassword');
+
+			return sendTransactionPromise(transaction).then(function (res) {
+				node.expect(res).to.have.property('success').to.be.ok;
+				node.expect(res).to.have.property('transactionId').to.equal(transaction.id);
+				badTransactions.push(transaction);
+			});
+		});
+
 		it('with valid params should be ok', function () {
-			transaction = node.lisk.signature.createSignature(account.password, account.secondPassword);
+			transaction = node.lisk.signature.createSignature(account.password, account.secondPassword, 1);
 
 			return sendTransactionPromise(transaction).then(function (res) {
 				node.expect(res).to.have.property('success').to.be.ok;
@@ -101,6 +116,16 @@ describe('POST /api/transactions (type 1) register second secret', function () {
 	});
 
 	describe('enforcement', function () {
+
+		it('using second passphrase on a fresh account should fail', function () {
+			transaction = node.lisk.transaction.createTransaction(node.eAccount.address, 1, accountNoSecondPassword.password, accountNoSecondPassword.secondPassword);
+
+			return sendTransactionPromise(transaction).then(function (res) {
+				node.expect(res).to.have.property('success').to.be.not.ok;
+				node.expect(res).to.have.property('message').to.equal('Sender does not have a second signature');
+				badTransactionsEnforcement.push(transaction);
+			});
+		});
 
 		describe('type 0 - sending funds', function () {
 
@@ -294,21 +319,21 @@ describe('POST /api/transactions (type 1) register second secret', function () {
 				it('with not all the signatures should be ok but never confirmed', function () {
 					signature = node.lisk.multisignature.signTransaction(pendingMultisignatures[0], accountNoFunds.password);
 
-					return sendSignaturePromisify(signature, pendingMultisignatures[0]).then(function (res) {
+					return sendSignaturePromise(signature, pendingMultisignatures[0]).then(function (res) {
 						node.expect(res).to.have.property('success').to.be.ok;
 					});
 				});
 
-				// FIXME: affect severily next tests
+				// FIXME: affect severily when registering dapp with the same account
 				it.skip('with all the signatures should be ok and confirmed (even with accounts without funds)', function () {
 					signature = node.lisk.multisignature.signTransaction(pendingMultisignatures[1], accountNoFunds.password);
 
-					return sendSignaturePromisify(signature, pendingMultisignatures[1]).then(function (res) {
+					return sendSignaturePromise(signature, pendingMultisignatures[1]).then(function (res) {
 						node.expect(res).to.have.property('success').to.be.ok;
 
 						signature = node.lisk.multisignature.signTransaction(pendingMultisignatures[1], node.eAccount.password);
 
-						return sendSignaturePromisify(signature, pendingMultisignatures[1]).then(function (res) {
+						return sendSignaturePromise(signature, pendingMultisignatures[1]).then(function (res) {
 							node.expect(res).to.have.property('success').to.be.ok;
 
 							goodTransactionsEnforcement.push(pendingMultisignatures[1]);
