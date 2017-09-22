@@ -112,8 +112,11 @@ describe('POST /api/transactions (type 3) votes', function () {
 	describe('schema validations', function () {
 
 		shared.invalidAssets(account, 'votes', badTransactions);
+	});
 
-		it('voting delegate with manipulated vote should fail', function () {
+	describe('transactions processing', function () {
+
+		it('upvoting with manipulated vote should fail', function () {
 			transaction = node.lisk.vote.createVote(account.password, ['++' + node.eAccount.publicKey]);
 
 			return sendTransactionPromise(transaction).then(function (res) {
@@ -123,7 +126,7 @@ describe('POST /api/transactions (type 3) votes', function () {
 			});
 		});
 
-		it('unvoting delegate with manipulated vote should fail', function () {
+		it('downvoting with manipulated vote should fail', function () {
 			transaction = node.lisk.vote.createVote(account.password, ['--' + node.eAccount.publicKey]);
 
 			return sendTransactionPromise(transaction).then(function (res) {
@@ -153,7 +156,7 @@ describe('POST /api/transactions (type 3) votes', function () {
 			});
 		});
 
-		it('using one null inside votes should fail', function () {
+		it('using a null publicKey inside votes should fail', function () {
 			transaction = node.lisk.vote.createVote(account.password, [null]);
 
 			return sendTransactionPromise(transaction).then(function (res) {
@@ -162,11 +165,8 @@ describe('POST /api/transactions (type 3) votes', function () {
 				badTransactions.push(transaction);
 			});
 		});
-	});
 
-	describe('transactions processing', function () {
-
-		it('voting with no funds should fail', function () {
+		it('upvoting with no funds should fail', function () {
 			accountNoFunds = node.randomAccount();
 			transaction = node.lisk.vote.createVote(accountNoFunds.password, ['+' + node.eAccount.publicKey]);
 
@@ -177,7 +177,7 @@ describe('POST /api/transactions (type 3) votes', function () {
 			});
 		});
 
-		it('voting with scarce funds should be ok', function () {
+		it('upvoting with scarce funds should be ok', function () {
 			transaction = node.lisk.vote.createVote(accountScarceFunds.password, ['+' + node.eAccount.publicKey]);
 
 			return sendTransactionPromise(transaction).then(function (res) {
@@ -187,7 +187,7 @@ describe('POST /api/transactions (type 3) votes', function () {
 			});
 		});
 
-		it('unvoting not voted should fail', function () {
+		it('downvoting not voted delegate should fail', function () {
 			transaction = node.lisk.vote.createVote(account.password, ['-' + node.eAccount.publicKey]);
 
 			return sendTransactionPromise(transaction).then(function (res) {
@@ -197,7 +197,7 @@ describe('POST /api/transactions (type 3) votes', function () {
 			});
 		});
 
-		it('voting with valid params should be ok', function () {
+		it('upvoting with valid params should be ok', function () {
 			transaction = node.lisk.vote.createVote(account.password, ['+' + node.eAccount.publicKey]);
 
 			return sendTransactionPromise(transaction).then(function (res) {
@@ -207,7 +207,7 @@ describe('POST /api/transactions (type 3) votes', function () {
 			});
 		});
 
-		it('self voting with valid params should be ok', function () {
+		it('self upvoting with valid params should be ok', function () {
 			transaction = node.lisk.vote.createVote(node.eAccount.password, ['+' + node.eAccount.publicKey]);
 
 			return sendTransactionPromise(transaction).then(function (res) {
@@ -217,7 +217,7 @@ describe('POST /api/transactions (type 3) votes', function () {
 			});
 		});
 
-		it('voting for 33 delegates at once should be ok', function () {
+		it('upvoting 33 delegates at once should be ok', function () {
 			transaction = node.lisk.vote.createVote(account33.password, delegates33.map(function (delegate) {
 				return '+' + delegate.publicKey;
 			}));
@@ -229,19 +229,19 @@ describe('POST /api/transactions (type 3) votes', function () {
 			});
 		});
 
-		it('voting for 34 delegates at once should fail', function () {
+		it('upvoting 34 delegates at once should fail', function () {
 			transaction = node.lisk.vote.createVote(account101.password, delegates101.slice(0,34).map(function (delegate) {
 				return '+' + delegate.publicKey;
 			}));
 
 			return sendTransactionPromise(transaction).then(function (res) {
 				node.expect(res).to.have.property('success').to.be.not.ok;
-				node.expect(res).to.have.property('message').to.equal('Voting limit exceeded. Maximum is 33 votes per transaction');
+				node.expect(res).to.have.property('message').to.equal('Invalid transaction body - Failed to validate vote schema: Array is too long (34), maximum 33');
 				badTransactions.push(transaction);
 			});
 		});
 
-		it('voting for 101 delegates separately should be ok', function () {
+		it('upvoting 101 delegates separately should be ok', function () {
 			transaction = node.lisk.vote.createVote(account101.password, delegates101.slice(0,33).map(function (delegate) {
 				return '+' + delegate.publicKey;
 			}));
@@ -291,7 +291,7 @@ describe('POST /api/transactions (type 3) votes', function () {
 
 	describe('enforcement', function () {
 
-		it('voting same delegate twice should fail', function () {
+		it('upvoting same delegate twice should fail', function () {
 			transaction = node.lisk.vote.createVote(account.password, ['+' + node.eAccount.publicKey]);
 
 			return sendTransactionPromise(transaction).then(function (res) {
@@ -301,7 +301,7 @@ describe('POST /api/transactions (type 3) votes', function () {
 			});
 		});
 
-		it('unvoting voted delegate should be ok', function () {
+		it('downvoting voted delegate should be ok', function () {
 			transaction = node.lisk.vote.createVote(account.password, ['-' + node.eAccount.publicKey]);
 
 			return sendTransactionPromise(transaction).then(function (res) {
@@ -311,7 +311,7 @@ describe('POST /api/transactions (type 3) votes', function () {
 			});
 		});
 
-		it('self voting twice should fail', function () {
+		it('self upvoting twice should fail', function () {
 			transaction = node.lisk.vote.createVote(node.eAccount.password, ['+' + node.eAccount.publicKey]);
 
 			return sendTransactionPromise(transaction).then(function (res) {
@@ -321,20 +321,8 @@ describe('POST /api/transactions (type 3) votes', function () {
 			});
 		});
 
-		it('removing vote from self should be ok', function () {
+		it('self downvoting should be ok', function () {
 			transaction = node.lisk.vote.createVote(node.eAccount.password, ['-' + node.eAccount.publicKey]);
-
-			return sendTransactionPromise(transaction).then(function (res) {
-				node.expect(res).to.have.property('success').to.be.ok;
-				node.expect(res).to.have.property('transactionId').to.equal(transaction.id);
-				goodTransactions.push(transaction);
-			});
-		});
-
-		it('removing votes from 33 delegates at once should be ok', function () {
-			transaction = node.lisk.vote.createVote(account33.password, delegates33.map(function (delegate) {
-				return '-' + delegate.publicKey;
-			}));
 
 			return sendTransactionPromise(transaction).then(function (res) {
 				node.expect(res).to.have.property('success').to.be.ok;
@@ -353,19 +341,31 @@ describe('POST /api/transactions (type 3) votes', function () {
 			});
 		});
 
-		it('removing votes from 34 delegates at once should fail', function () {
+		it('downvoting 33 delegates at once should be ok', function () {
+			transaction = node.lisk.vote.createVote(account33.password, delegates33.map(function (delegate) {
+				return '-' + delegate.publicKey;
+			}));
+
+			return sendTransactionPromise(transaction).then(function (res) {
+				node.expect(res).to.have.property('success').to.be.ok;
+				node.expect(res).to.have.property('transactionId').to.equal(transaction.id);
+				goodTransactions.push(transaction);
+			});
+		});
+
+		it('downvoting 34 delegates at once should fail', function () {
 			transaction = node.lisk.vote.createVote(account101.password, delegates101.slice(0,34).map(function (delegate) {
 				return '-' + delegate.publicKey;
 			}));
 
 			return sendTransactionPromise(transaction).then(function (res) {
 				node.expect(res).to.have.property('success').to.be.not.ok;
-				node.expect(res).to.have.property('message').to.equal('Voting limit exceeded. Maximum is 33 votes per transaction');
+				node.expect(res).to.have.property('message').to.equal('Invalid transaction body - Failed to validate vote schema: Array is too long (34), maximum 33');
 				badTransactions.push(transaction);
 			});
 		});
 
-		it('voting for 101 delegates separately should be ok', function () {
+		it('downvoting 101 delegates separately should be ok', function () {
 			transaction = node.lisk.vote.createVote(account101.password, delegates101.slice(0,33).map(function (delegate) {
 				return '-' + delegate.publicKey;
 			}));
