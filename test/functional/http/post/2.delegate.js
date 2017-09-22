@@ -21,6 +21,7 @@ describe('POST /api/transactions (type 2) register delegate', function () {
 	var account = node.randomAccount();
 	var accountNoFunds = node.randomAccount();
 	var accountScarceFunds = node.randomAccount();
+	var accountUpperCase = node.randomAccount();
 
 	var transaction;
 
@@ -30,6 +31,7 @@ describe('POST /api/transactions (type 2) register delegate', function () {
 		var promises = [];
 		promises.push(creditAccountPromise(account.address, 100000000000));
 		promises.push(creditAccountPromise(accountScarceFunds.address, constants.fees.delegate));
+		promises.push(creditAccountPromise(accountUpperCase.address, constants.fees.delegate));
 
 		return node.Promise.all(promises).then(function (results) {
 			results.forEach(function (res) {
@@ -69,8 +71,19 @@ describe('POST /api/transactions (type 2) register delegate', function () {
 			});
 		});
 
+		it('with uppercase username should fail', function () {
+			transaction = node.lisk.delegate.createDelegate(accountUpperCase.password, accountUpperCase.username.toUpperCase());
+
+			return sendTransactionPromise(transaction).then(function (res) {
+				node.expect(res).to.have.property('success').to.be.not.ok;
+				node.expect(res).to.have.property('message').to.equal('Username must be lowercase');
+				badTransactions.push(transaction);
+			});
+		});
+
 		it('with valid params should be ok', function () {
 			transaction = node.lisk.delegate.createDelegate(account.password, account.username);
+
 			return sendTransactionPromise(transaction).then(function (res) {
 				node.expect(res).to.have.property('success').to.be.ok;
 				node.expect(res).to.have.property('transactionId').to.equal(transaction.id);
