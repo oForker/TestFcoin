@@ -43,12 +43,25 @@ function creditAccount (address, amount, cb) {
 	sendTransaction(transaction, cb);
 }
 
+var getTransactionPromise = node.Promise.promisify(getTransaction);
+var sendTransactionPromise = node.Promise.promisify(sendTransaction);
+var getUnconfirmedTransactionPromise = node.Promise.promisify(getUnconfirmedTransaction);
+var getPendingMultisignaturePromise = node.Promise.promisify(getPendingMultisignature);
+var creditAccountPromise = node.Promise.promisify(creditAccount);
+var sendSignaturePromise = node.Promise.promisify(sendSignature);
+
 module.exports = {
 	getTransaction: getTransaction,
+	getTransactionPromise: getTransactionPromise,
 	getUnconfirmedTransaction: getUnconfirmedTransaction,
+	getUnconfirmedTransactionPromise: getUnconfirmedTransactionPromise,
 	getPendingMultisignature: getPendingMultisignature,
+	getPendingMultisignaturePromise: getPendingMultisignaturePromise,
 	sendSignature: sendSignature,
+	sendSignaturePromise: sendSignaturePromise,
 	sendTransaction: sendTransaction,
+	sendTransactionPromise: sendTransactionPromise,
 	sendLISK: sendLISK,
-	creditAccount: creditAccount
+	creditAccount: creditAccount,
+	creditAccountPromise: creditAccountPromise
 };

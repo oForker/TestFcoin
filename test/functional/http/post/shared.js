@@ -2,23 +2,11 @@
 
 var node = require('../../../node');
 
-var sendTransaction = require('../../../common/complexTransactions').sendTransaction;
-var getTransaction = require('../../../common/complexTransactions').getTransaction;
-var getUnconfirmedTransaction = require('../../../common/complexTransactions').getUnconfirmedTransaction;
-var getPendingMultisignature = require('../../../common/complexTransactions').getPendingMultisignature;
-
-var sendTransactionPromise = node.Promise.promisify(sendTransaction);
-var getTransactionPromise = node.Promise.promisify(getTransaction);
-var getUnconfirmedTransactionPromise = node.Promise.promisify(getUnconfirmedTransaction);
-var getPendingMultisignaturePromise = node.Promise.promisify(getPendingMultisignature);
+var sendTransactionPromise = require('../../../common/complexTransactions').sendTransactionPromise;
+var getTransactionPromise = require('../../../common/complexTransactions').getTransactionPromise;
+var getUnconfirmedTransactionPromise = require('../../../common/complexTransactions').getUnconfirmedTransactionPromise;
+var getPendingMultisignaturePromise = require('../../../common/complexTransactions').getPendingMultisignaturePromise;
 var onNewBlockPromise = node.Promise.promisify(node.onNewBlock);
-
-var sentences = {
-	emptyTx : 			'Invalid transaction body - Empty trs passed',
-	unknownTx : 		'Invalid transaction body - Unknown transaction type ',
-	failedId : 			'Failed to get transaction id',
-	invalidId:			'Invalid transaction id'
-};
 
 var tests = [
 	{describe: 'null',							args: null},
@@ -198,7 +186,6 @@ function invalidAssets (account, option, badTransactions) {
 }
 
 module.exports = {
-	sentences: sentences,
 	tests: tests,
 	confirmationPhase: confirmationPhase,
 	invalidTxs: invalidTxs,

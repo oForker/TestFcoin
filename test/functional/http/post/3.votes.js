@@ -4,11 +4,8 @@ var node = require('../../../node');
 var shared = require('./shared');
 var constants = require('../../../../helpers/constants');
 
-var sendTransaction = require('../../../common/complexTransactions').sendTransaction;
-var creditAccount = require('../../../common/complexTransactions').creditAccount;
-
-var sendTransactionPromise = node.Promise.promisify(sendTransaction);
-var creditAccountPromise = node.Promise.promisify(creditAccount);
+var sendTransactionPromise = require('../../../common/complexTransactions').sendTransactionPromise;
+var creditAccountPromise = require('../../../common/complexTransactions').creditAccountPromise;
 var waitForBlocksPromise = node.Promise.promisify(node.waitForBlocks);
 
 function registerDelegatePromise (account) {

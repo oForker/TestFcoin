@@ -4,8 +4,7 @@ var node = require('../../../node');
 var shared = require('./shared');
 var constants = require('../../../../helpers/constants');
 
-var sendTransaction = require('../../../common/complexTransactions').sendTransaction;
-var sendTransactionPromise = node.Promise.promisify(sendTransaction);
+var sendTransactionPromise = require('../../../common/complexTransactions').sendTransactionPromise;
 
 describe('POST /api/transactions (type 0) transfer funds', function () {
 

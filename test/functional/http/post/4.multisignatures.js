@@ -4,13 +4,9 @@ var node = require('../../../node');
 var shared = require('./shared');
 var constants = require('../../../../helpers/constants');
 
-var sendTransaction = require('../../../common/complexTransactions').sendTransaction;
-var creditAccount = require('../../../common/complexTransactions').creditAccount;
-var sendSignature = require('../../../common/complexTransactions').sendSignature;
-
-var sendTransactionPromise = node.Promise.promisify(sendTransaction);
-var creditAccountPromise = node.Promise.promisify(creditAccount);
-var sendSignaturePromise = node.Promise.promisify(sendSignature);
+var sendTransactionPromise = require('../../../common/complexTransactions').sendTransactionPromise;
+var creditAccountPromise = require('../../../common/complexTransactions').creditAccountPromise;
+var sendSignaturePromise = require('../../../common/complexTransactions').sendSignaturePromise;
 var onNewBlockPromise = node.Promise.promisify(node.onNewBlock);
 
 function Scenario (size, amount) {
